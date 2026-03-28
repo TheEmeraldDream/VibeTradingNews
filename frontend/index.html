@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trading App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════ HEADER ═══════════════════ -->
+  <header>
+    <div class="header-left">
+      <span class="logo">⬡ TRADING</span>
+      <span class="version">v1.0</span>
+    </div>
+    <div class="header-right">
+      <div class="status-badge" id="brokerStatus">
+        <span class="dot"></span><span class="label">CONNECTING…</span>
+      </div>
+      <button class="btn-toggle" id="strategyToggle" onclick="toggleStrategy()">
+        STRATEGY: OFF
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════ MAIN GRID ═══════════════════ -->
+  <main class="grid">
+
+    <!-- ── LEFT: Account + Metrics ── -->
+    <section class="panel" id="panelLeft">
+
+      <div class="panel-title">ACCOUNT</div>
+      <div class="metric-grid">
+        <div class="metric">
+          <span class="metric-label">EQUITY</span>
+          <span class="metric-value" id="equity">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">CASH</span>
+          <span class="metric-value" id="cash">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">BUYING POWER</span>
+          <span class="metric-value" id="buyingPower">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">DAY P&amp;L</span>
+          <span class="metric-value" id="dailyPnl">—</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="panel-title">PERFORMANCE</div>
+      <div class="metric-grid">
+        <div class="metric">
+          <span class="metric-label">WIN RATE</span>
+          <span class="metric-value" id="winRate">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">CLOSED TRADES</span>
+          <span class="metric-value" id="totalTrades">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">WINS</span>
+          <span class="metric-value green" id="wins">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">LOSSES</span>
+          <span class="metric-value red" id="losses">—</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="panel-title">STRATEGY PARAMS</div>
+      <div class="strategy-params" id="strategyParams">—</div>
+
+    </section>
+
+    <!-- ── CENTER: Positions + Orders ── -->
+    <section class="panel" id="panelCenter">
+
+      <div class="panel-title">
+        POSITIONS
+        <span class="count" id="posCount">0</span>
+      </div>
+      <table class="data-table" id="positionsTable">
+        <thead>
+          <tr>
+            <th>SYMBOL</th><th>QTY</th><th>ENTRY</th><th>PRICE</th><th>P&amp;L</th><th>%</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="divider"></div>
+      <div class="panel-title">RECENT ORDERS</div>
+      <table class="data-table" id="ordersTable">
+        <thead>
+          <tr>
+            <th>SYMBOL</th><th>SIDE</th><th>QTY</th><th>PRICE</th><th>STATUS</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+    </section>
+
+    <!-- ── RIGHT: Claude Chat ── -->
+    <section class="panel panel-chat" id="panelRight">
+
+      <div class="panel-title">
+        CLAUDE STRATEGY ASSISTANT
+        <span class="claude-badge" id="claudeBadge">●</span>
+      </div>
+
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg system">
+          <span class="msg-sender">SYSTEM</span>
+          <span class="msg-text">Claude is connected. Ask me to analyze your strategy, suggest improvements, or modify parameters.</span>
+        </div>
+      </div>
+
+      <div class="chat-input-row">
+        <textarea
+          id="promptInput"
+          class="chat-input"
+          placeholder="e.g. 'Tighten stop losses and add TSLA to the watchlist' or 'Why is my win rate low?'"
+          rows="3"
+          onkeydown="handleKey(event)"
+        ></textarea>
+        <button class="btn-send" id="sendBtn" onclick="sendPrompt()">SEND</button>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+  <!-- marked.js for Claude markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
