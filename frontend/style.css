@@ -198,6 +198,16 @@ main.grid {
 .strategy-params .param-key   { color: var(--text3); }
 .strategy-params .param-val   { color: var(--text); }
 
+/* ─── Equity chart ──────────────────────────────────────────── */
+.chart-wrap {
+  position: relative;
+  height: 160px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+
 /* ─── Data tables ───────────────────────────────────────────── */
 .data-table {
   width: 100%;

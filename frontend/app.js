@@ -11,12 +11,97 @@ const WS    = 'ws://localhost:8000/ws';
 let ws          = null;
 let streaming   = false;
 let retryTimer  = null;
+let equityChart = null;
+const equityHistory = { labels: [], values: [] };
+const MAX_POINTS = 60;
 
 // ─── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  initChart();
   connectWS();
   checkClaudeStatus();
 });
+
+// ─── Equity chart ────────────────────────────────────────────
+function initChart() {
+  const ctx = document.getElementById('equityChart').getContext('2d');
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, 160);
+  gradient.addColorStop(0, 'rgba(0, 217, 126, 0.18)');
+  gradient.addColorStop(1, 'rgba(0, 217, 126, 0)');
+
+  equityChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: equityHistory.labels,
+      datasets: [{
+        data: equityHistory.values,
+        borderColor: '#00d97e',
+        borderWidth: 1.5,
+        backgroundColor: gradient,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        pointHoverBackgroundColor: '#00d97e',
+        tension: 0.35,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#181818',
+          borderColor: '#252525',
+          borderWidth: 1,
+          titleColor: '#444',
+          bodyColor: '#d8d8d8',
+          titleFont: { family: "'JetBrains Mono', monospace", size: 9 },
+          bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+          callbacks: {
+            title: (items) => items[0].label,
+            label: (item) => ' $' + Number(item.raw).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          },
+        },
+      },
+      scales: {
+        x: {
+          display: false,
+        },
+        y: {
+          position: 'right',
+          grid: { color: '#1a1a1a', drawBorder: false },
+          border: { display: false },
+          ticks: {
+            color: '#444',
+            font: { family: "'JetBrains Mono', monospace", size: 9 },
+            maxTicksLimit: 4,
+            callback: (v) => '$' + Number(v).toLocaleString('en-US', { notation: 'compact' }),
+          },
+        },
+      },
+    },
+  });
+}
+
+function updateChart(equity) {
+  if (!equityChart || equity == null) return;
+  const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  equityHistory.labels.push(now);
+  equityHistory.values.push(Number(equity));
+  if (equityHistory.labels.length > MAX_POINTS) {
+    equityHistory.labels.shift();
+    equityHistory.values.shift();
+  }
+  // Recolor line red if trending down over last 5 points
+  const vals = equityHistory.values;
+  const trending = vals.length >= 2 ? vals[vals.length - 1] - vals[0] : 0;
+  equityChart.data.datasets[0].borderColor = trending >= 0 ? '#00d97e' : '#ff4757';
+  equityChart.update('none');
+}
 
 // ─── WebSocket ───────────────────────────────────────────────
 function connectWS() {
@@ -51,7 +136,7 @@ function applySnapshot(data) {
   if (data.orders)    renderOrders(data.orders);
   if (data.metrics)   renderMetrics(data.metrics);
   if (data.strategy)  renderStrategyParams(data.strategy);
-  if (data.account)   updateToggleButton(data.strategy?.enabled ?? false, data.account.mode);
+  if (data.account)   updateToggleButton(data.strategy?.enabled ?? false);
 }
 
 // ─── Status indicator ────────────────────────────────────────
@@ -89,6 +174,7 @@ async function checkClaudeStatus() {
 
 // ─── Account ─────────────────────────────────────────────────
 function renderAccount(a) {
+  updateChart(a.equity);
   setText('equity',      fmt$(a.equity));
   setText('cash',        fmt$(a.cash));
   setText('buyingPower', fmt$(a.buying_power));
@@ -180,7 +266,7 @@ function renderOrders(orders) {
 }
 
 // ─── Strategy toggle ─────────────────────────────────────────
-function updateToggleButton(enabled, mode) {
+function updateToggleButton(enabled) {
   const btn = document.getElementById('strategyToggle');
   btn.textContent = `STRATEGY: ${enabled ? 'ON' : 'OFF'}`;
   btn.className = 'btn-toggle' + (enabled ? ' active' : '');
@@ -190,7 +276,7 @@ async function toggleStrategy() {
   try {
     const res = await fetch(`${API}/api/strategy/toggle`, { method: 'POST' });
     const data = await res.json();
-    updateToggleButton(data.enabled, null);
+    updateToggleButton(data.enabled);
     appendSystemMsg(`Strategy ${data.enabled ? 'enabled' : 'disabled'}.`);
   } catch (e) {
     appendSystemMsg('Failed to toggle strategy: ' + e.message);
