@@ -1,11 +1,15 @@
 # ── Secrets ────────────────────────────────────────────────────
 .env
+.env.*
+!.env.example
 *.key
 *.pem
 *.p12
 *.pfx
 secrets/
 credentials/
+*_secret*
+*_credentials*
 
 # ── Python ─────────────────────────────────────────────────────
 __pycache__/
@@ -37,3 +41,15 @@ desktop.ini
 *.log
 *.tmp
 *.bak
+
+# ── Node ─────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Database / data files ─────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/
