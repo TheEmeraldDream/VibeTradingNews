@@ -1,29 +1,26 @@
 # VibeTrading
 
-> *"You are not prepared."* — But your portfolio will be.
+> A dark minimalist news aggregator for your stock holdings — powered by Alpaca and Claude AI.
 
-An automated trading terminal with a dark minimalist UI and a Claude AI assistant that reads your strategy, understands your positions, and modifies parameters on the fly — all from natural language.
-
-![Dashboard](assets/dashboard.png)
+Pulls recent financial news for every position in your portfolio, correlates it with price movements, and lets you ask Claude to explain what's actually driving your P&L.
 
 ---
 
 ## What it does
 
-- **Live dashboard** — equity, cash, P&L, positions, and orders update in real time over WebSocket. No refresh needed. Just stare at the numbers going up (hopefully).
-- **Strategy engine** — RSI + Moving Average Crossover with fully configurable parameters. Think of it as your passive income farm, but for stonks.
-- **Claude assistant** — Type a message in plain English. Claude reads your current strategy, account state, and open positions, then applies changes live. It's like having a warlock in your raid who actually knows what they're doing.
-- **Demo mode** — Runs without any API keys using realistic mock data. Safe to explore before you commit your gold.
-
-![Chat panel](assets/chat.png)
+- **Holdings dashboard** — equity, cash, daily P&L, and all open positions update in real time over WebSocket.
+- **News feed** — fetches the last 7 days of financial news for your held symbols via the Alpaca news API. Refreshes automatically every 5 minutes.
+- **Per-holding news filter** — click any holding in the left panel to filter the news feed to that symbol. Each holding shows how many articles are linked to it.
+- **Claude news analyst** — hit **ANALYZE** for an automatic breakdown of which news events are likely driving price movements in your portfolio. Or ask anything in plain English.
+- **Demo mode** — runs without any API keys using realistic mock data for both positions and news.
 
 ---
 
 ## Requirements
 
 - Python 3.11+
-- An [Alpaca](https://alpaca.markets) account — paper trading is free and a good way to test before going all-in
-- An [Anthropic](https://console.anthropic.com) API key for the Claude assistant
+- An [Alpaca](https://alpaca.markets) account — paper trading is free
+- An [Anthropic](https://console.anthropic.com) API key for Claude
 
 ---
 
@@ -38,42 +35,36 @@ cd VibeTrading
 
 ### 2. Configure your keys
 
-Copy the env template and fill it in:
-
 ```bash
 cp .env.example .env
 ```
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-...        # Powers the Claude assistant
-ALPACA_API_KEY=PKxxxxxxxxxxxxxxxx    # From your Alpaca dashboard
-ALPACA_SECRET_KEY=xxxxxxxxxxxxxxxx  # Keep this one close to your chest
-ALPACA_PAPER=true                   # true = paper trading. Recommended before you YOLO.
+ANTHROPIC_API_KEY=sk-ant-...        # Powers Claude analysis
+ALPACA_API_KEY=PKxxxxxxxxxxxxxxxx   # From your Alpaca dashboard
+ALPACA_SECRET_KEY=xxxxxxxxxxxxxxxx  # Your Alpaca secret
+ALPACA_PAPER=true                   # true = paper trading (recommended)
 ```
 
-> **No keys?** The app boots in **demo mode** automatically — mock data, no real orders. Good for getting a feel before you pull aggro on your own account.
+> **No keys?** The app boots in **demo mode** automatically — mock positions and mock news, no credentials needed.
 
 ### 3. Launch
 
-**Windows** — double-click `run.bat`, or from a terminal:
-
+**Windows:**
 ```
 run.bat
 ```
 
 **Mac / Linux:**
-
 ```bash
 chmod +x run.sh && ./run.sh
 ```
 
-The script handles everything: virtual environment creation, dependency installation, and opening your browser. Your only job is to show up.
+The script creates a virtual environment, installs dependencies, and opens your browser. Then open `http://localhost:8000/app`.
 
 ---
 
-## Running the app manually
-
-If you prefer to drive stick:
+## Manual startup
 
 ```bash
 cd backend
@@ -84,58 +75,69 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-Then open `http://localhost:8000/app`.
-
 ---
 
 ## Using the dashboard
 
-![Positions table](assets/positions.png)
+### Left panel — Account & Holdings
+Shows equity, cash, buying power, and daily P&L at the top. Below that is a list of your open positions with current price, unrealized P&L, and a count of how many news articles are linked to each symbol. Clicking a holding filters the news feed.
 
-### Account panel (left)
-Shows your equity, cash, buying power, and daily P&L. The numbers glow green or red depending on how the market is treating you today. Silence your inner goblin — focus on the long game.
+### Center panel — News Feed
+Displays the last 7 days of news for your held symbols, sorted newest first. Use the filter chips at the top to narrow by symbol, or click **ALL** to see everything. Article headlines link out to the source when a URL is available. News refreshes automatically every 5 minutes — or hit **REFRESH NEWS** in the header to force it.
 
-### Positions & Orders (center)
-Live table of your open positions with unrealized P&L and percentage. Recent orders below. If everything is red, consider logging off and doing a dungeon run instead.
+### Right panel — Claude News Analyst
+Click **ANALYZE NEWS IMPACT** for an automatic analysis of how recent news may be affecting your holdings. Claude gets your full portfolio context (positions, prices, P&L) and the 25 most recent articles before responding.
 
-### Strategy toggle
-The **STRATEGY: ON / OFF** button in the header enables or disables the trading engine. When on, the scanner wakes up every 60 seconds (configurable), checks your symbols, and places orders based on the strategy config.
-
-> First time enabling it? Think of it as your opening /ready check.
-
----
-
-## Talking to Claude
-
-![Claude assistant](assets/claude-chat.png)
-
-The chat panel on the right is where the magic happens. Type anything in plain English:
-
-- `"Tighten my stop losses to 1.5%"`
-- `"Add TSLA to the watchlist"`
-- `"My win rate is terrible, what's wrong?"`
-- `"Make the strategy more conservative, I'm taking too much damage"`
-- `"What's my current position sizing?"`
-
-Claude reads your live context — current config, account balance, open positions, and performance metrics — before every response. If it decides changes are needed, it applies them automatically and shows a **STRATEGY UPDATED** confirmation in the chat.
+You can also ask specific questions:
+- `"Why did NVDA drop today?"`
+- `"What's the biggest risk in my portfolio based on recent news?"`
+- `"Summarize the AAPL news from this week"`
+- `"Which of my holdings has the most negative news sentiment?"`
 
 ---
 
-## Strategy config
+## Architecture
 
-The default strategy is defined in `backend/strategy.py` and can be modified at runtime through Claude or the REST API.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Browser (frontend)                      │
+│                                                                 │
+│  ┌─────────────┐    ┌──────────────────────┐    ┌───────────┐  │
+│  │   Holdings  │◄──►│      News Feed        │    │  Claude   │  │
+│  │   + Account │ ▲  │  (filter by holding) │    │  Analyst  │  │
+│  └─────────────┘ │  └──────────────────────┘    └─────┬─────┘  │
+│       click      │              ▲                      │ SSE    │
+│      filters     │              │ WebSocket snapshot   │ stream │
+└──────────────────┼──────────────┼──────────────────────┼────────┘
+                   │              │                      │
+┌──────────────────┼──────────────┼──────────────────────┼────────┐
+│                  │   FastAPI backend (port 8000)        │        │
+│                  │              │                      │        │
+│   ┌──────────────┴───┐  ┌───────┴──────┐   ┌──────────┴──────┐ │
+│   │   broker.py      │  │   main.py    │   │ claude_client.py│ │
+│   │  (read-only)     │  │              │   │  claude-opus-4-6│ │
+│   │                  │  │ background   │   │  adaptive think │ │
+│   │ • get_account()  │  │ refresh loop │   └────────┬────────┘ │
+│   │ • get_positions()│  │ every 5 min  │            │          │
+│   │ • get_bars()     │  └──────┬───────┘            │          │
+│   └──────┬───────────┘         │                    │          │
+│          │                ┌────┴─────┐               │          │
+│          │                │ news.py  │               │          │
+│          │                └────┬─────┘               │          │
+└──────────┼─────────────────────┼─────────────────────┼──────────┘
+           │                     │                     │
+    ┌──────┴──────┐       ┌──────┴──────┐     ┌───────┴──────┐
+    │  Alpaca     │       │  Alpaca     │     │  Anthropic   │
+    │ Trading API │       │  News API   │     │  Claude API  │
+    │ (positions) │       │ (articles)  │     │              │
+    └─────────────┘       └─────────────┘     └──────────────┘
+```
 
-| Parameter | Default | Description |
-|---|---|---|
-| `symbols` | AAPL, MSFT, NVDA, AMD, GOOGL | Your farming route |
-| `rsi_period` | 14 | RSI lookback period |
-| `rsi_oversold` | 35 | RSI threshold to trigger a buy signal |
-| `ma_fast` / `ma_slow` | 10 / 20 | Moving average crossover periods |
-| `stop_loss_pct` | 2.0% | Where you admit the trade isn't going your way |
-| `take_profit_pct` | 5.0% | Where you collect your loot |
-| `max_positions` | 5 | Maximum simultaneous positions |
-| `position_size_pct` | 10.0% | % of equity per trade |
-| `scan_interval_seconds` | 60 | How often the engine sweeps your symbols |
+**Data flows:**
+1. On startup and every 5 minutes — backend fetches positions from Alpaca, pulls news for those symbols, caches articles, broadcasts snapshot over WebSocket
+2. Browser connects via WebSocket — receives account, positions, and news on connect and on each refresh
+3. Clicking a holding — filters the news feed client-side (no extra request)
+4. Clicking ANALYZE or sending a message — POST to `/api/claude`; backend builds context from live positions + cached news and streams Claude's response back as SSE
 
 ---
 
@@ -147,26 +149,37 @@ VibeTrading/
 ├── run.bat               # Windows launcher
 ├── run.sh                # Mac/Linux launcher
 ├── backend/
-│   ├── main.py           # FastAPI app — REST, WebSocket, SSE
-│   ├── broker.py         # Alpaca connector with demo fallback
-│   ├── strategy.py       # RSI + MA crossover engine
-│   ├── claude_client.py  # Claude API streaming integration
+│   ├── main.py           # FastAPI app — REST, WebSocket, SSE, news refresh loop
+│   ├── broker.py         # Alpaca read-only connector (positions, prices, bars)
+│   ├── news.py           # Alpaca news API wrapper with mock fallback
+│   ├── claude_client.py  # Claude streaming integration for news analysis
 │   └── requirements.txt
 ├── frontend/
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
-└── assets/               # Screenshots for this README
+└── assets/
 ```
+
+---
+
+## API endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/account` | Account balance and daily P&L |
+| `GET` | `/api/positions` | Open positions |
+| `GET` | `/api/news` | Cached news articles for current holdings |
+| `POST` | `/api/news/refresh` | Force a news refresh and broadcast |
+| `GET` | `/api/snapshot` | Account + positions + news in one call |
+| `GET` | `/api/status` | Broker mode, Claude availability, news status |
+| `POST` | `/api/claude` | Stream Claude analysis (SSE) |
+| `WS` | `/ws` | Live snapshot updates every 5 minutes |
 
 ---
 
 ## Security
 
-- `.env` is in `.gitignore` — your API keys stay local
-- The app binds to `localhost:8000` only — not exposed to your network
-- Paper trading mode is the default — no real money moves until you explicitly switch
-
----
-
-*For the Horde. And for passive income.*
+- `.env` is gitignored — API keys stay local
+- Broker is read-only — no orders are placed
+- Paper trading is the default
