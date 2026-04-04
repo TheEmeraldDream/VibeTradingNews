@@ -37,19 +37,15 @@ cd VibeTradingNews
 
 ### 2. Add your AI key
 
-Copy the example config file and open it in any text editor:
-
-```bash
-cp .env.example .env
-```
-
-Paste your key next to the provider you're using — you only need to fill in one:
+Open the `.env` file in any text editor and paste your key — you only need to fill in one:
 
 ```
 ANTHROPIC_API_KEY=your-key-here
 OPENAI_API_KEY=your-key-here
 GOOGLE_API_KEY=your-key-here
 ```
+
+> **Note:** Edit `.env`, not `.env.example`. The example file is a template and is not read by the app.
 
 ### 3. Launch
 
