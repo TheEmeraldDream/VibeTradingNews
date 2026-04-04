@@ -250,8 +250,16 @@ async function checkClaudeStatus() {
     const d = await r.json();
     const badge = document.getElementById('claudeBadge');
     badge.className = 'claude-badge ' + (d.ai_available ? 'online' : '');
+
     if (!d.ai_available) {
-      appendMsg('system', 'No AI provider configured — set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY in .env to enable analysis.');
+      const keys = d.ai_keys_in_env || [];
+      if (keys.length > 0) {
+        const names = { anthropic: 'Claude', openai: 'ChatGPT', google: 'Gemini' };
+        const label = keys.map(k => names[k] || k).join(' / ');
+        appendMsg('system', `${label} key found in .env but the provider failed to start — try restarting the server.`);
+      } else {
+        appendMsg('system', 'No AI key found in .env — open the .env file and add one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.');
+      }
     }
   } catch (_) {}
 }

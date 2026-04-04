@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from broker import BrokerClient
-from ai_client import AIClient
+from claude_client import AIClient
 from news import NewsAggregator
 
 # ------------------------------------------------------------------ #
@@ -177,6 +177,20 @@ async def get_snapshot():
     return _build_snapshot()
 
 
+def _env_keys_configured() -> list[str]:
+    """Read .env file directly and return which AI providers have keys set."""
+    env_path = Path(__file__).parent.parent / ".env"
+    vals = dotenv_values(env_path) if env_path.exists() else {}
+    found = []
+    if vals.get("ANTHROPIC_API_KEY", "").strip():
+        found.append("anthropic")
+    if vals.get("OPENAI_API_KEY", "").strip():
+        found.append("openai")
+    if vals.get("GOOGLE_API_KEY", "").strip() or vals.get("GEMINI_API_KEY", "").strip():
+        found.append("google")
+    return found
+
+
 @app.get("/api/status")
 async def get_status():
     return {
@@ -184,6 +198,7 @@ async def get_status():
         "broker_connected": broker.connected,
         "ai_available": ai_client.available,
         "ai_provider": ai_client.provider,
+        "ai_keys_in_env": _env_keys_configured(),
         "news_demo": news_aggregator.demo,
         "news_article_count": len(news_cache.get("articles", [])),
         "news_last_updated": news_cache.get("last_updated"),
