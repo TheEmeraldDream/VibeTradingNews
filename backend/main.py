@@ -76,12 +76,17 @@ ws_manager = ConnectionManager()
 # ------------------------------------------------------------------ #
 
 async def _news_refresh() -> None:
-    """Fetch news for current holdings every 5 minutes and broadcast."""
+    """Fetch live prices + news for current holdings every 5 minutes and broadcast."""
     while True:
+        loop = asyncio.get_running_loop()
         try:
             positions = portfolio.get_positions()
             symbols = [p["symbol"] for p in positions]
-            news_cache["articles"] = news_aggregator.get_news(symbols)
+            if symbols:
+                await loop.run_in_executor(None, portfolio.fetch_live_prices, symbols)
+            news_cache["articles"] = await loop.run_in_executor(
+                None, news_aggregator.get_news, symbols
+            )
             news_cache["last_updated"] = datetime.utcnow().isoformat()
             logger.info(f"News refreshed — {len(news_cache['articles'])} articles for {symbols}")
         except Exception as e:
@@ -161,9 +166,14 @@ async def get_news():
 
 @app.post("/api/news/refresh")
 async def refresh_news():
+    loop = asyncio.get_running_loop()
     positions = portfolio.get_positions()
     symbols = [p["symbol"] for p in positions]
-    news_cache["articles"] = news_aggregator.get_news(symbols)
+    if symbols:
+        await loop.run_in_executor(None, portfolio.fetch_live_prices, symbols)
+    news_cache["articles"] = await loop.run_in_executor(
+        None, news_aggregator.get_news, symbols
+    )
     news_cache["last_updated"] = datetime.utcnow().isoformat()
     await ws_manager.broadcast(_build_snapshot())
     return {

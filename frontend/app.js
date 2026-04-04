@@ -275,7 +275,11 @@ async function checkClaudeStatus() {
 // ─── Claude analysis ─────────────────────────────────────────
 function triggerAnalysis() {
   const input = document.getElementById('promptInput');
-  input.value = 'Analyze the recent news for my holdings. Identify which articles are most likely driving price movements and explain the connections between news events and price changes.';
+  if (activeFilter === 'ALL') {
+    input.value = 'Analyze the recent news for my holdings. Identify which articles are most likely driving price movements and explain the connections between news events and price changes.';
+  } else {
+    input.value = `Analyze the recent news for ${activeFilter}. What are the key headlines and how might they be driving price movement for this stock?`;
+  }
   sendPrompt();
 }
 

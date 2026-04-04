@@ -40,9 +40,9 @@ class NewsAggregator:
     # ------------------------------------------------------------------ #
 
     def _yfinance_news(self, symbols: list[str], limit: int) -> list[dict]:
-        articles = []
-        seen     = set()
-        per_sym  = max(10, limit // max(len(symbols), 1))
+        # Keyed by article uid so duplicates accumulate symbol tags instead of being dropped
+        articles_by_id: dict[str, dict] = {}
+        per_sym = max(10, limit // max(len(symbols), 1))
 
         for sym in symbols:
             try:
@@ -51,9 +51,14 @@ class NewsAggregator:
                     # yfinance >= 0.2.50 wraps everything under item['content']
                     c   = item.get("content") or item
                     uid = item.get("id") or c.get("id") or c.get("uuid", "")
-                    if not uid or uid in seen:
+                    if not uid:
                         continue
-                    seen.add(uid)
+
+                    if uid in articles_by_id:
+                        # Article already seen from another symbol — just add this symbol tag
+                        if sym not in articles_by_id[uid]["symbols"]:
+                            articles_by_id[uid]["symbols"].append(sym)
+                        continue
 
                     # URL: prefer canonical (direct to source), fall back to clickThrough
                     canonical = (c.get("canonicalUrl") or {}).get("url", "")
@@ -73,7 +78,7 @@ class NewsAggregator:
 
                     source = (c.get("provider") or {}).get("displayName") or c.get("publisher", "")
 
-                    articles.append({
+                    articles_by_id[uid] = {
                         "id":           uid,
                         "headline":     c.get("title") or "",
                         "summary":      c.get("summary") or c.get("description") or "",
@@ -82,11 +87,11 @@ class NewsAggregator:
                         "url":          url,
                         "symbols":      [sym],
                         "published_at": pub_dt.isoformat(),
-                    })
+                    }
             except Exception as e:
                 logger.error(f"yfinance news error for {sym}: {e}")
 
-        articles.sort(key=lambda a: a["published_at"], reverse=True)
+        articles = sorted(articles_by_id.values(), key=lambda a: a["published_at"], reverse=True)
         return articles[:limit]
 
     # ------------------------------------------------------------------ #

@@ -6,6 +6,7 @@ Set AI_PROVIDER=anthropic|openai|google in .env to override.
 """
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator
 
 logger = logging.getLogger(__name__)
@@ -106,8 +107,14 @@ class AIClient:
             for p in positions
         ) or "  (none)"
 
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+        recent = [
+            a for a in news
+            if datetime.fromisoformat(a.get("published_at", "1970-01-01T00:00:00+00:00")) > cutoff
+        ]
+
         news_lines = []
-        for a in news[:25]:
+        for a in recent[:25]:
             pub = a.get("published_at", "")[:16].replace("T", " ")
             syms = ", ".join(a.get("symbols", []))
             summary = a.get("summary", "")[:200]
@@ -128,7 +135,7 @@ ACCOUNT (mode: {account.get('mode', 'unknown')}):
 HOLDINGS:
 {pos_lines}
 
-RECENT NEWS (last 7 days, newest first):
+RECENT NEWS (last 48 hours, newest first):
 {news_block}
 
 --- END CONTEXT ---"""
