@@ -274,35 +274,11 @@ class PortfolioReader:
         """
         local = self._local_portfolio()
         if local and "positions" in local and YFINANCE_AVAILABLE:
-            all_positions = local["positions"]
-            a = local.get("account", {})
-
+            positions = local["positions"]
             if symbol_filter is not None:
-                # Filtered view: include only the requested symbols (no offset)
-                positions = [p for p in all_positions if p["symbol"] in set(symbol_filter)]
-                non_pos = 0.0
-            else:
-                # Full view: exclude positions flagged as chart_excluded (e.g. 401k proxies
-                # whose share counts were back-calculated and don't track accurately).
-                # Their total value is captured in non_position_equity instead.
-                positions = [p for p in all_positions if not p.get("chart_excluded")]
-                non_pos = float(a.get("non_position_equity", 0))
-
-            candles = self._live_pnl_history(positions, period, start, end)
-            if candles and non_pos > 0:
-                # Add the static non-position equity (e.g. 401k total) as a flat offset
-                # so the chart Y-axis reflects true portfolio value.
-                candles = [
-                    {
-                        "time":  c["time"],
-                        "open":  round(c["open"]  + non_pos, 2),
-                        "high":  round(c["high"]  + non_pos, 2),
-                        "low":   round(c["low"]   + non_pos, 2),
-                        "close": round(c["close"] + non_pos, 2),
-                    }
-                    for c in candles
-                ]
-            return candles
+                allowed = set(symbol_filter)
+                positions = [p for p in positions if p["symbol"] in allowed]
+            return self._live_pnl_history(positions, period, start, end)
 
         # Demo mode: use real yfinance history for demo symbols
         if YFINANCE_AVAILABLE:

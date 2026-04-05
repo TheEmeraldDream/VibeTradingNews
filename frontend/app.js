@@ -224,6 +224,7 @@ function applySnapshot(data) {
     renderNews();
   }
   if (data.news_updated) renderNewsTimestamp(data.news_updated);
+  loadPnlHistory();
 }
 
 // ─── Account ─────────────────────────────────────────────────
