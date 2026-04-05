@@ -171,8 +171,9 @@ class PortfolioReader:
         end: str | None = None,
     ) -> list[dict]:
         """
-        Returns portfolio P&L OHLC candles.
-        Each entry: {time, open, high, low, close} — values are unrealized $ P&L.
+        Returns portfolio holdings market-value OHLC candles (sum of qty * price per symbol).
+        Each entry: {time, open, high, low, close} — values are total holdings market value in $.
+        Cash is excluded (not available historically), so this tracks equity minus cash balance.
         - Standard periods (1D/5D/1M/3M/6M/1Y): hourly candles for 1D/5D, daily otherwise.
         - CUSTOM period: daily candles between `start` and `end` (YYYY-MM-DD strings).
         """
@@ -196,9 +197,8 @@ class PortfolioReader:
         candles: dict = {}
 
         for p in positions:
-            sym   = p["symbol"]
-            qty   = float(p["qty"])
-            entry = float(p["avg_entry_price"])
+            sym = p["symbol"]
+            qty = float(p["qty"])
             try:
                 if period == "CUSTOM" and start and end:
                     hist = yf.Ticker(sym).history(start=start, end=end, interval=interval)
@@ -211,10 +211,11 @@ class PortfolioReader:
                     key = int(ts.timestamp()) if intraday else ts.strftime("%Y-%m-%d")
                     if key not in candles:
                         candles[key] = {"open": 0.0, "high": 0.0, "low": 0.0, "close": 0.0}
-                    candles[key]["open"]  += (row["Open"]  - entry) * qty
-                    candles[key]["high"]  += (row["High"]  - entry) * qty
-                    candles[key]["low"]   += (row["Low"]   - entry) * qty
-                    candles[key]["close"] += (row["Close"] - entry) * qty
+                    # Market value (not P&L from entry) so the y-axis aligns with equity
+                    candles[key]["open"]  += row["Open"]  * qty
+                    candles[key]["high"]  += row["High"]  * qty
+                    candles[key]["low"]   += row["Low"]   * qty
+                    candles[key]["close"] += row["Close"] * qty
             except Exception as e:
                 logger.warning(f"P&L history fetch failed for {sym}: {e}")
 
@@ -225,18 +226,21 @@ class PortfolioReader:
             key=lambda x: x["time"],
         )
 
+    # Approximate total market value of the demo positions used in get_positions()
+    _DEMO_BASE_VALUE = 15 * 184.20 + 5 * 645.80 + 8 * 385.50  # ≈ $9,076
+
     def _demo_pnl_history(
         self,
         period: str,
         start: str | None,
         end: str | None,
     ) -> list[dict]:
-        """Deterministic mock P&L history for demo mode."""
+        """Deterministic mock portfolio-value history for demo mode."""
         cfg      = self._PERIOD_CFG.get(period, self._PERIOD_CFG["1M"])
         intraday = period in ("1D", "5D")
         rng      = random.Random(42)
         result   = []
-        pnl      = 0.0
+        value    = self._DEMO_BASE_VALUE  # start at realistic market value, not 0
 
         if period == "CUSTOM" and start and end:
             start_d = datetime.strptime(start, "%Y-%m-%d").date()
@@ -244,8 +248,8 @@ class PortfolioReader:
             d = start_d
             while d <= end_d:
                 if d.weekday() < 5:
-                    result.append(self._demo_candle(rng, d.strftime("%Y-%m-%d"), pnl))
-                    pnl = result[-1]["close"]
+                    result.append(self._demo_candle(rng, d.strftime("%Y-%m-%d"), value))
+                    value = result[-1]["close"]
                 d += timedelta(days=1)
             return result
 
@@ -260,9 +264,9 @@ class PortfolioReader:
                     # Market hours: 9:30–16:00 → ~7 hourly bars
                     for hour in (10, 11, 12, 13, 14, 15, 16):
                         ts = int(datetime(d.year, d.month, d.day, hour).timestamp())
-                        c  = self._demo_candle(rng, ts, pnl)
+                        c  = self._demo_candle(rng, ts, value)
                         result.append(c)
-                        pnl = c["close"]
+                        value = c["close"]
                     days_collected += 1
                 d -= timedelta(days=1)
             return sorted(result, key=lambda x: x["time"])
@@ -280,18 +284,20 @@ class PortfolioReader:
         trading_days.reverse()
 
         for d in trading_days:
-            c = self._demo_candle(rng, d.strftime("%Y-%m-%d"), pnl)
+            c = self._demo_candle(rng, d.strftime("%Y-%m-%d"), value)
             result.append(c)
-            pnl = c["close"]
+            value = c["close"]
         return result
 
     @staticmethod
-    def _demo_candle(rng: random.Random, time_key, pnl: float) -> dict:
-        change = rng.gauss(15, 180)
-        open_  = pnl
-        close  = pnl + change
-        high   = max(open_, close) + abs(rng.gauss(0, 70))
-        low    = min(open_, close) - abs(rng.gauss(0, 70))
+    def _demo_candle(rng: random.Random, time_key, value: float) -> dict:
+        # Daily move of ~0.5% avg, ~2% vol — realistic for a small equity portfolio
+        change = rng.gauss(value * 0.005, value * 0.02)
+        open_  = value
+        close  = max(value + change, 1.0)  # prevent negative market value
+        wick   = abs(rng.gauss(0, value * 0.008))
+        high   = max(open_, close) + wick
+        low    = max(min(open_, close) - wick, 1.0)
         return {
             "time":  time_key,
             "open":  round(open_, 2),

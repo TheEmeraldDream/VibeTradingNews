@@ -93,6 +93,9 @@ function initPnlChart() {
       fontFamily: "'JetBrains Mono', 'Fira Mono', monospace",
       fontSize:   10,
     },
+    localization: {
+      priceFormatter: v => '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+    },
     grid: {
       vertLines: { color: '#181818' },
       horzLines: { color: '#181818' },
