@@ -21,9 +21,10 @@ let streaming   = false;
 let retryTimer  = null;
 let activeFilter = 'ALL';
 let allArticles  = [];
-let pnlChart     = null;
-let pnlSeries    = null;
-let activePeriod = '1M';
+let pnlChart          = null;
+let pnlSeries         = null;
+let activePeriod      = '1M';
+let lastNewsUpdateIso = null;
 
 // ─── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -31,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initPnlChart();
   connectWS();
   checkClaudeStatus();
+  setInterval(() => { if (lastNewsUpdateIso) renderNewsTimestamp(lastNewsUpdateIso); }, 1000);
 });
 
 // ─── Panel resize ────────────────────────────────────────────
@@ -330,8 +332,8 @@ function renderNews() {
 function renderNewsTimestamp(iso) {
   const el = document.getElementById('newsUpdated');
   if (!el || !iso) return;
-  const d = new Date(iso);
-  el.textContent = 'Updated ' + fmtTimeAgo(d.toISOString());
+  lastNewsUpdateIso = iso;
+  el.textContent = 'Updated ' + fmtTimeAgo(iso);
 }
 
 // ─── News refresh ────────────────────────────────────────────
@@ -511,10 +513,12 @@ function fmtSignPct(val, pct) {
 function fmtTimeAgo(iso) {
   if (!iso) return '';
   const ms   = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(ms / 60000);
-  if (mins < 60)  return `${mins}m ago`;
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60)   return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60)   return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24)   return `${hrs}h ago`;
+  if (hrs < 24)    return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 }
