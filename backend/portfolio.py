@@ -8,6 +8,7 @@ so P&L is always calculated against real market prices.
 """
 import json
 import logging
+import math
 import random
 import time
 from datetime import datetime, timedelta
@@ -25,11 +26,23 @@ _PORTFOLIO_TTL = 30   # seconds before re-reading the file from disk
 _PRICE_TTL     = 60   # seconds before re-fetching live prices
 
 
+# Demo holdings shown to new users before they configure a portfolio.
+# avg_entry_price values are approximate historical costs — not used for display,
+# only for unrealized P&L once live prices are fetched.
+_DEMO_HOLDINGS = [
+    {"symbol": "AAPL", "qty": 15.0, "avg_entry_price": 178.50},
+    {"symbol": "NVDA", "qty":  5.0, "avg_entry_price": 620.00},
+    {"symbol": "MSFT", "qty":  8.0, "avg_entry_price": 390.10},
+]
+_DEMO_CASH = 5_000.0
+
+
 class PortfolioReader:
     def __init__(self):
         self._portfolio_cache: dict | None = None
         self._portfolio_cache_time: float = 0
         self._price_cache: dict[str, float] = {}
+        self._prev_close_cache: dict[str, float] = {}
         self._price_cache_time: float = 0
         self._portfolio_path = Path(__file__).parent.parent / "local" / "portfolio.json"
         self.mode = "local" if self._portfolio_path.exists() else "demo"
@@ -57,29 +70,44 @@ class PortfolioReader:
 
     def fetch_live_prices(self, symbols: list[str], force: bool = False) -> dict[str, float]:
         """
-        Fetch current prices from yfinance for all symbols.
+        Fetch current prices and previous close from yfinance for all symbols.
         Blocking — call via asyncio.get_running_loop().run_in_executor().
         Results are cached for _PRICE_TTL seconds; pass force=True to bypass the cache
         (used on every news refresh so prices are always current).
+
+        Data quality: yfinance wraps Yahoo Finance's unofficial API (15-min delayed
+        for free tier). Prices are validated to be finite and positive before caching;
+        symbols that return bad data fall back to their last cached value.
         """
         now = time.monotonic()
         if not force and self._price_cache and now - self._price_cache_time < _PRICE_TTL:
             return self._price_cache
         if not YFINANCE_AVAILABLE or not symbols:
             return self._price_cache
-        prices = {}
+        prices: dict[str, float] = {}
+        prev_closes: dict[str, float] = {}
         for sym in symbols:
             try:
                 fi = yf.Ticker(sym).fast_info
-                price = getattr(fi, "last_price", None) or getattr(fi, "regular_market_price", None)
-                if price:
-                    prices[sym] = float(price)
+                raw = getattr(fi, "last_price", None) or getattr(fi, "regular_market_price", None)
+                prev = getattr(fi, "previous_close", None)
+
+                if raw is not None and math.isfinite(float(raw)) and float(raw) > 0:
+                    prices[sym] = float(raw)
                 else:
-                    logger.warning(f"Live price unavailable for {sym} (no data returned)")
+                    logger.warning(
+                        f"Skipping invalid price for {sym}: {raw!r} "
+                        f"(keeping cached value if available)"
+                    )
+                if prev is not None and math.isfinite(float(prev)) and float(prev) > 0:
+                    prev_closes[sym] = float(prev)
             except Exception as e:
                 logger.warning(f"Live price fetch failed for {sym}: {e}")
+
         if prices:
-            self._price_cache = prices
+            # Merge into cache so symbols that failed keep their last good value
+            self._price_cache.update(prices)
+            self._prev_close_cache.update(prev_closes)
             self._price_cache_time = now
         return self._price_cache
 
@@ -88,6 +116,7 @@ class PortfolioReader:
         self._portfolio_cache = None
         self._portfolio_cache_time = 0
         self._price_cache = {}
+        self._prev_close_cache = {}
         self._price_cache_time = 0
         self.mode = "local" if self._portfolio_path.exists() else "demo"
 
@@ -95,27 +124,61 @@ class PortfolioReader:
     # Account                                                              #
     # ------------------------------------------------------------------ #
 
+    def _live_daily_pnl(self, positions: list[dict]) -> tuple[float, float]:
+        """
+        Compute today's P&L from live price vs previous close.
+        Returns (daily_pnl, daily_pnl_pct). Falls back to (0, 0) if data unavailable.
+        """
+        if not self._prev_close_cache:
+            return 0.0, 0.0
+        pnl = 0.0
+        prev_equity = 0.0
+        for p in positions:
+            sym  = p["symbol"]
+            qty  = p["qty"]
+            cur  = self._price_cache.get(sym)
+            prev = self._prev_close_cache.get(sym)
+            if cur and prev:
+                pnl        += (cur - prev) * qty
+                prev_equity += prev * qty
+        if prev_equity == 0:
+            return 0.0, 0.0
+        return round(pnl, 2), round(pnl / prev_equity * 100, 2)
+
     def get_account(self) -> dict:
         local = self._local_portfolio()
         if local and "account" in local:
             a = local["account"]
+            positions = self.get_positions()
+            daily_pnl, daily_pnl_pct = self._live_daily_pnl(positions)
+            if daily_pnl == 0.0:
+                # Fall back to stored values if live daily data isn't ready yet
+                daily_pnl     = a.get("daily_pnl", 0)
+                daily_pnl_pct = a.get("daily_pnl_pct", 0)
             return {
                 "equity":        a.get("equity", 0),
                 "cash":          a.get("cash", 0),
                 "buying_power":  a.get("buying_power", 0),
-                "daily_pnl":     a.get("daily_pnl", 0),
-                "daily_pnl_pct": a.get("daily_pnl_pct", 0),
+                "daily_pnl":     daily_pnl,
+                "daily_pnl_pct": daily_pnl_pct,
                 "mode":          self.mode,
                 "status":        "ACTIVE",
             }
-        base = 100_000.0
-        pnl = random.uniform(-500, 1500)
+
+        # Demo mode: fetch live prices for demo symbols so new users see real data
+        demo_syms = [h["symbol"] for h in _DEMO_HOLDINGS]
+        if YFINANCE_AVAILABLE:
+            self.fetch_live_prices(demo_syms)
+        positions = self.get_positions()
+        market_value = sum(p["market_value"] for p in positions)
+        equity = round(market_value + _DEMO_CASH, 2)
+        daily_pnl, daily_pnl_pct = self._live_daily_pnl(positions)
         return {
-            "equity":        base + pnl,
-            "cash":          72_340.50,
-            "buying_power":  144_681.00,
-            "daily_pnl":     pnl,
-            "daily_pnl_pct": pnl / base * 100,
+            "equity":        equity,
+            "cash":          _DEMO_CASH,
+            "buying_power":  _DEMO_CASH * 2,
+            "daily_pnl":     daily_pnl,
+            "daily_pnl_pct": daily_pnl_pct,
             "mode":          "demo",
             "status":        "ACTIVE",
         }
@@ -165,14 +228,18 @@ class PortfolioReader:
                 result.append(self._position_dict(sym, qty, entry, price, source, acct))
             return result
 
-        mock = [
-            ("AAPL", 15, 178.50, 184.20),
-            ("NVDA", 5,  620.00, 645.80),
-            ("MSFT", 8,  390.10, 385.50),
-        ]
+        # Demo mode: use live prices from yfinance so new users see real market data
+        demo_syms = [h["symbol"] for h in _DEMO_HOLDINGS]
+        if YFINANCE_AVAILABLE:
+            self.fetch_live_prices(demo_syms)
         return [
-            self._position_dict(sym, float(qty), entry, current + random.uniform(-1, 1))
-            for sym, qty, entry, current in mock
+            self._position_dict(
+                h["symbol"], h["qty"], h["avg_entry_price"],
+                self._price_cache.get(h["symbol"], h["avg_entry_price"]),
+                "live" if h["symbol"] in self._price_cache else "demo",
+                "demo",
+            )
+            for h in _DEMO_HOLDINGS
         ]
 
     # ------------------------------------------------------------------ #
@@ -231,6 +298,12 @@ class PortfolioReader:
                         for c in candles
                     ]
             return candles
+
+        # Demo mode: use real yfinance history for demo symbols
+        if YFINANCE_AVAILABLE:
+            candles = self._live_pnl_history(_DEMO_HOLDINGS, period, start, end)
+            if candles:
+                return candles
         return self._demo_pnl_history(period, start, end)
 
     def _live_pnl_history(
