@@ -99,10 +99,15 @@ class PortfolioReader:
         local = self._local_portfolio()
         if local and "account" in local:
             a = local["account"]
+            cash = a.get("cash", 0)
+            # Compute equity from live position prices so it matches the chart
+            positions = self.get_positions()
+            market_value = sum(p["market_value"] for p in positions)
+            equity = round(market_value + cash, 2)
             return {
-                "equity":        a.get("equity", 0),
-                "cash":          a.get("cash", 0),
-                "buying_power":  a.get("buying_power", 0),
+                "equity":        equity,
+                "cash":          cash,
+                "buying_power":  a.get("buying_power", cash),
                 "daily_pnl":     a.get("daily_pnl", 0),
                 "daily_pnl_pct": a.get("daily_pnl_pct", 0),
                 "mode":          self.mode,
