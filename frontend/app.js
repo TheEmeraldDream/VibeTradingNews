@@ -21,6 +21,10 @@ let streaming   = false;
 let retryTimer  = null;
 let activeFilter = 'ALL';
 let allArticles  = [];
+let allPositions = [];
+let allAccounts  = [];
+let enabledAccounts   = new Set();
+let collapsedAccounts = new Set(JSON.parse(localStorage.getItem('collapsedAccounts') || '[]'));
 let pnlChart          = null;
 let pnlSeries         = null;
 let activePeriod      = '1M';
@@ -165,6 +169,10 @@ async function loadPnlHistory(customStart, customEnd) {
   if (activePeriod === 'CUSTOM' && customStart && customEnd) {
     url += `&start=${customStart}&end=${customEnd}`;
   }
+  const enabledSyms = getEnabledSymbols();
+  if (enabledSyms && enabledSyms.length) {
+    url += `&symbols=${enabledSyms.join(',')}`;
+  }
   try {
     const res  = await fetch(url);
     const data = await res.json();
@@ -208,6 +216,7 @@ function applySnapshot(data) {
     renderAccount(data.account);
     setBrokerStatus(data.ai_available ? 'connected' : 'demo');
   }
+  if (data.accounts !== undefined) initAccounts(data.accounts);
   if (data.positions !== undefined) renderHoldings(data.positions);
   if (data.news !== undefined) {
     allArticles = data.news;
@@ -228,8 +237,54 @@ function renderAccount(a) {
   pnlEl.className = 'metric-value ' + (a.daily_pnl >= 0 ? 'green' : 'red');
 }
 
+// ─── Account management ──────────────────────────────────────
+function initAccounts(accounts) {
+  allAccounts = accounts;
+  if (!accounts.length) return;
+
+  const saved = localStorage.getItem('enabledAccounts');
+  if (saved !== null) {
+    try { enabledAccounts = new Set(JSON.parse(saved)); }
+    catch (_) { enabledAccounts = new Set(accounts.map(a => a.id)); }
+  } else {
+    enabledAccounts = new Set(accounts.map(a => a.id));
+    localStorage.setItem('enabledAccounts', JSON.stringify([...enabledAccounts]));
+  }
+}
+
+function toggleAccount(accountId) {
+  if (enabledAccounts.has(accountId)) {
+    enabledAccounts.delete(accountId);
+  } else {
+    enabledAccounts.add(accountId);
+  }
+  localStorage.setItem('enabledAccounts', JSON.stringify([...enabledAccounts]));
+  renderHoldings(allPositions);
+  renderNews();
+  loadPnlHistory();
+}
+
+function toggleCollapse(accountId) {
+  if (collapsedAccounts.has(accountId)) {
+    collapsedAccounts.delete(accountId);
+  } else {
+    collapsedAccounts.add(accountId);
+  }
+  localStorage.setItem('collapsedAccounts', JSON.stringify([...collapsedAccounts]));
+  renderHoldings(allPositions);
+}
+
+// Returns symbols belonging to enabled accounts, or null if no accounts are configured.
+function getEnabledSymbols() {
+  if (!allAccounts.length) return null;
+  return allPositions
+    .filter(p => !p.account || enabledAccounts.has(p.account))
+    .map(p => p.symbol);
+}
+
 // ─── Holdings ────────────────────────────────────────────────
 function renderHoldings(positions) {
+  allPositions = positions;
   const list = document.getElementById('holdingsList');
   document.getElementById('holdingsCount').textContent = positions.length;
 
@@ -238,28 +293,73 @@ function renderHoldings(positions) {
     return;
   }
 
-  list.innerHTML = positions.map(p => {
-    const pnlClass   = p.unrealized_pl >= 0 ? 'green' : 'red';
-    const pnlSign    = p.unrealized_pl >= 0 ? '+' : '';
-    const newsCount  = allArticles.filter(a => a.symbols.includes(p.symbol)).length;
-    const isActive   = activeFilter === p.symbol ? ' active' : '';
-    const newsLabel  = newsCount === 0 ? 'no news' : `${newsCount} article${newsCount === 1 ? '' : 's'}`;
-    return `
-      <div class="holding-item${isActive}" onclick="setFilter('${escHtml(p.symbol)}')">
-        <div class="holding-top">
-          <span class="holding-sym">${escHtml(p.symbol)}</span>
-          <span class="holding-price">$${p.current_price.toFixed(2)}</span>
-        </div>
-        <div class="holding-bottom">
-          <span class="holding-qty dim">${p.qty.toFixed(0)} shares</span>
-          <span class="holding-pnl ${pnlClass}">
-            ${pnlSign}$${Math.abs(p.unrealized_pl).toFixed(2)}
-            (${pnlSign}${p.unrealized_plpc.toFixed(2)}%)
+  // Group positions by account
+  const groups = new Map(); // accountId -> {name, positions[]}
+  const ungrouped = [];
+  for (const p of positions) {
+    if (p.account) {
+      if (!groups.has(p.account)) {
+        const meta = allAccounts.find(a => a.id === p.account);
+        groups.set(p.account, { name: meta ? meta.name : p.account, positions: [] });
+      }
+      groups.get(p.account).positions.push(p);
+    } else {
+      ungrouped.push(p);
+    }
+  }
+
+  let html = '';
+  for (const [accountId, { name, positions: acctPositions }] of groups) {
+    const on        = enabledAccounts.has(accountId);
+    const collapsed = collapsedAccounts.has(accountId);
+    html += `
+      <div class="account-group">
+        <div class="account-header" onclick="toggleCollapse('${escHtml(accountId)}')">
+          <div class="account-header-left">
+            <span class="account-chevron${collapsed ? '' : ' open'}">▶</span>
+            <span class="account-name">${escHtml(name.toUpperCase())}</span>
+          </div>
+          <span class="account-toggle ${on ? 'on' : 'off'}"
+                onclick="event.stopPropagation(); toggleAccount('${escHtml(accountId)}')"
+                title="${on ? 'Included in news & chart — click to exclude' : 'Excluded from news & chart — click to include'}">
+            ${on ? 'ON' : 'OFF'}
           </span>
         </div>
-        <div class="holding-news-count">${newsLabel}</div>
+        <div class="account-holdings${on ? '' : ' disabled'}${collapsed ? ' collapsed' : ''}">
+          ${acctPositions.map(renderHoldingItem).join('')}
+        </div>
       </div>`;
-  }).join('');
+  }
+  if (ungrouped.length) html += ungrouped.map(renderHoldingItem).join('');
+
+  list.innerHTML = html;
+}
+
+function renderHoldingItem(p) {
+  const pnlClass   = p.unrealized_pl >= 0 ? 'green' : 'red';
+  const pnlSign    = p.unrealized_pl >= 0 ? '+' : '';
+  const newsCount  = allArticles.filter(a => a.symbols.includes(p.symbol)).length;
+  const isActive   = activeFilter === p.symbol ? ' active' : '';
+  const newsLabel  = newsCount === 0 ? 'no news' : `${newsCount} article${newsCount === 1 ? '' : 's'}`;
+  const stale      = p.price_source === 'file';
+  const priceLabel = stale
+    ? `<span class="holding-price stale" title="Live price unavailable — showing last known price">~$${p.current_price.toFixed(2)}</span>`
+    : `<span class="holding-price">$${p.current_price.toFixed(2)}</span>`;
+  return `
+    <div class="holding-item${isActive}" onclick="setFilter('${escHtml(p.symbol)}')">
+      <div class="holding-top">
+        <span class="holding-sym">${escHtml(p.symbol)}</span>
+        ${priceLabel}
+      </div>
+      <div class="holding-bottom">
+        <span class="holding-qty dim">${p.qty.toFixed(0)} shares</span>
+        <span class="holding-pnl ${pnlClass}">
+          ${pnlSign}$${Math.abs(p.unrealized_pl).toFixed(2)}
+          (${pnlSign}${p.unrealized_plpc.toFixed(2)}%)
+        </span>
+      </div>
+      <div class="holding-news-count">${newsLabel}</div>
+    </div>`;
 }
 
 // ─── News filter ─────────────────────────────────────────────
@@ -290,9 +390,15 @@ function setFilter(sym) {
 // ─── News feed ───────────────────────────────────────────────
 function renderNews() {
   const list = document.getElementById('newsList');
-  const filtered = activeFilter === 'ALL'
-    ? allArticles
-    : allArticles.filter(a => a.symbols.includes(activeFilter));
+  let filtered;
+  if (activeFilter === 'ALL') {
+    const enabledSyms = getEnabledSymbols();
+    filtered = enabledSyms
+      ? allArticles.filter(a => a.symbols.some(s => enabledSyms.includes(s)))
+      : allArticles;
+  } else {
+    filtered = allArticles.filter(a => a.symbols.includes(activeFilter));
+  }
 
   document.getElementById('newsCount').textContent = filtered.length;
 

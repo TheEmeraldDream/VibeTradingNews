@@ -8,6 +8,8 @@ A personal dashboard that pulls the latest financial news for your stock holding
 
 - **See your portfolio at a glance** — your total value, cash, and today's gains or losses update automatically.
 - **News, filtered to what you own** — only shows articles relevant to your holdings. Click any stock to narrow the feed to that symbol.
+- **Portfolio value chart** — candlestick chart of your total holdings market value over time. Choose from 1D, 5D, 1M, 3M, 6M, 1Y, or a custom date range.
+- **Multiple accounts** — group holdings by brokerage account (e.g. taxable brokerage, 401k). Toggle each account on or off to control what appears in the news feed and chart.
 - **AI analysis** — hit **ANALYZE** and the AI reads your holdings alongside the latest news to explain what's likely driving your prices. You can also ask questions in plain English.
 - **Works without any accounts** — if you don't set up an AI key, the app runs in demo mode with sample data so you can still explore it.
 
@@ -66,10 +68,18 @@ The app will open automatically in your browser at `http://localhost:8000/app`.
 ## Using the dashboard
 
 **Left — Holdings**
-Your portfolio summary is at the top. Below it, each stock you own shows its current price, your gain or loss, and how many news articles are linked to it. Click a stock to filter the news feed.
+Your portfolio summary is at the top. Below it, holdings are grouped by account. Each stock shows its current price, your gain or loss, and how many news articles are linked to it.
 
-**Center — News**
-Recent articles for everything you hold, newest first. Use the buttons at the top to filter by symbol, or click **ALL** to see everything. Headlines link directly to the original source. News updates automatically every 5 minutes, or click **REFRESH NEWS** to pull it immediately.
+- **Click a stock** to filter the news feed to that symbol.
+- **Click an account name** (or the ▶ arrow) to collapse or expand that account group.
+- **Click the ON / OFF badge** on an account to include or exclude it from the news feed and portfolio chart. This lets you, for example, view only your taxable brokerage holdings without your 401(k) cluttering the feed.
+
+Prices fetched live from Yahoo Finance are shown normally. If live data is unavailable for a ticker (common with certain mutual fund share classes), the price is shown in grey italic with a `~` prefix indicating it is the last known value.
+
+**Center — Portfolio chart + News**
+The candlestick chart shows the total market value of your holdings over time. Use the period buttons (1D, 5D, 1M, 3M, 6M, 1Y) or **CUSTOM** to pick a date range. The chart automatically reflects which accounts are toggled on.
+
+Below the chart, recent news articles for your enabled holdings appear newest first. Use the symbol buttons to filter by ticker, or click **ALL** to see everything. Headlines link directly to the original source. News updates automatically every 5 minutes, or click **REFRESH NEWS** to pull it immediately.
 
 **Right — AI Analyst**
 Click **ANALYZE NEWS IMPACT** for an automatic read on how recent news may be affecting your holdings. You can also type your own questions, for example:
@@ -83,6 +93,8 @@ Click **ANALYZE NEWS IMPACT** for an automatic read on how recent news may be af
 ## Adding your real holdings
 
 By default the app shows sample data. To use your actual portfolio, create a file at `local/portfolio.json` — this file stays on your computer and is never uploaded to GitHub.
+
+### Single account (simple setup)
 
 ```json
 {
@@ -110,11 +122,51 @@ By default the app shows sample data. To use your actual portfolio, create a fil
 }
 ```
 
+### Multiple accounts
+
+To group holdings by account and use the ON/OFF toggles, add an `"accounts"` array and an `"account"` field on each position:
+
+```json
+{
+  "accounts": [
+    { "id": "brokerage", "name": "Brokerage" },
+    { "id": "401k",      "name": "My 401(k)" }
+  ],
+  "account": {
+    "equity": 150000.00,
+    "cash": 5000.00,
+    "buying_power": 5000.00,
+    "daily_pnl": 400.00,
+    "daily_pnl_pct": 0.27
+  },
+  "positions": [
+    {
+      "symbol": "AAPL",
+      "account": "brokerage",
+      "qty": 10,
+      "avg_entry_price": 170.00,
+      "current_price": 182.00
+    },
+    {
+      "symbol": "VTSNX",
+      "account": "401k",
+      "qty": 250,
+      "avg_entry_price": 41.00,
+      "current_price": 43.00
+    }
+  ]
+}
+```
+
+Each position's `"account"` value must match an `"id"` in the `"accounts"` array. Positions with no `"account"` field are shown ungrouped. The `"equity"` in `"account"` should reflect the combined total across all accounts.
+
+You can add as many accounts as you like. The ON/OFF toggle state for each account is remembered between browser sessions.
+
 ### Account fields
 
 | Field | Description |
 |---|---|
-| `equity` | Total portfolio value — cash plus the current market value of all positions |
+| `equity` | Total portfolio value across all accounts — cash plus the current market value of all positions |
 | `cash` | Uninvested cash sitting in the account |
 | `buying_power` | How much you can currently spend (often 2× cash for a margin account, or equal to cash for a standard account) |
 | `daily_pnl` | Today's dollar gain or loss across the whole account |
@@ -124,10 +176,11 @@ By default the app shows sample data. To use your actual portfolio, create a fil
 
 | Field | Description |
 |---|---|
-| `symbol` | Stock ticker, e.g. `"AAPL"` |
-| `qty` | Number of shares you hold |
+| `symbol` | Stock ticker, e.g. `"AAPL"`. Mutual fund tickers (e.g. `"VTSNX"`) also work if Yahoo Finance carries them — the price will be shown as stale (`~`) if live data is unavailable |
+| `account` | *(optional)* The `id` of the account this position belongs to, e.g. `"brokerage"` or `"401k"` |
+| `qty` | Number of shares (or fund units) you hold |
 | `avg_entry_price` | Your average cost per share — used to calculate unrealized P&L |
-| `current_price` | Last known price per share. Only used as a fallback on first load — once the app starts, it fetches live prices from Yahoo Finance automatically and ignores this value |
+| `current_price` | Last known price per share. Only used as a fallback on first load — once the app starts, it fetches live prices from Yahoo Finance automatically |
 
 Fill in your own values and save the file. The app picks it up on next launch and refreshes live prices from Yahoo Finance every five minutes.
 

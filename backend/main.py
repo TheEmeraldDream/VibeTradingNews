@@ -120,6 +120,7 @@ def _build_snapshot() -> dict[str, Any]:
     return {
         "type": "snapshot",
         "account": portfolio.get_account(),
+        "accounts": portfolio.get_accounts(),
         "positions": portfolio.get_positions(),
         "news": news_cache.get("articles", []),
         "news_updated": news_cache.get("last_updated"),
@@ -256,15 +257,16 @@ async def refresh_news(request: Request):
 
 
 @app.get("/api/pnl-history")
-async def get_pnl_history(period: str = "1M", start: str = None, end: str = None):
+async def get_pnl_history(period: str = "1M", start: str = None, end: str = None, symbols: str = None):
     if period not in ("1D", "5D", "1M", "3M", "6M", "1Y", "CUSTOM"):
         raise HTTPException(status_code=400, detail=f"Invalid period '{period}'")
     if period == "CUSTOM" and not (start and end):
         raise HTTPException(status_code=400, detail="CUSTOM period requires start and end dates")
+    symbol_filter = [s.strip() for s in symbols.split(",") if s.strip()] if symbols else None
     try:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            None, lambda: portfolio.get_pnl_history(period, start, end)
+            None, lambda: portfolio.get_pnl_history(period, start, end, symbol_filter)
         )
     except Exception as e:
         logger.error(f"Failed to build P&L history: {e}")

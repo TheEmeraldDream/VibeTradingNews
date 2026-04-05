@@ -73,6 +73,8 @@ class PortfolioReader:
                 price = getattr(fi, "last_price", None) or getattr(fi, "regular_market_price", None)
                 if price:
                     prices[sym] = float(price)
+                else:
+                    logger.warning(f"Live price unavailable for {sym} (no data returned)")
             except Exception as e:
                 logger.warning(f"Live price fetch failed for {sym}: {e}")
         if prices:
@@ -109,7 +111,14 @@ class PortfolioReader:
             "status":        "ACTIVE",
         }
 
-    def _position_dict(self, symbol: str, qty: float, entry: float, price: float) -> dict:
+    def get_accounts(self) -> list[dict]:
+        local = self._local_portfolio()
+        if local and "accounts" in local:
+            return local["accounts"]
+        return []
+
+    def _position_dict(self, symbol: str, qty: float, entry: float, price: float,
+                       price_source: str = "live", account: str = "") -> dict:
         pl   = (price - entry) * qty
         plpc = (price - entry) / entry * 100
         return {
@@ -121,6 +130,8 @@ class PortfolioReader:
             "market_value":    round(price * qty, 2),
             "unrealized_pl":   round(pl, 2),
             "unrealized_plpc": round(plpc, 2),
+            "price_source":    price_source,
+            "account":         account,
         }
 
     # ------------------------------------------------------------------ #
@@ -132,11 +143,17 @@ class PortfolioReader:
         if local and "positions" in local:
             result = []
             for p in local["positions"]:
-                qty   = float(p["qty"])
-                entry = float(p["avg_entry_price"])
-                # Use live price if cached, otherwise fall back to the file value
-                price = self._price_cache.get(p["symbol"], float(p.get("current_price", entry)))
-                result.append(self._position_dict(p["symbol"], qty, entry, price))
+                qty    = float(p["qty"])
+                entry  = float(p["avg_entry_price"])
+                sym    = p["symbol"]
+                acct   = p.get("account", "")
+                if sym in self._price_cache:
+                    price  = self._price_cache[sym]
+                    source = "live"
+                else:
+                    price  = float(p.get("current_price", entry))
+                    source = "file"
+                result.append(self._position_dict(sym, qty, entry, price, source, acct))
             return result
 
         mock = [
@@ -169,6 +186,7 @@ class PortfolioReader:
         period: str = "1M",
         start: str | None = None,
         end: str | None = None,
+        symbol_filter: list[str] | None = None,
     ) -> list[dict]:
         """
         Returns portfolio holdings market-value OHLC candles (sum of qty * price per symbol).
@@ -176,10 +194,15 @@ class PortfolioReader:
         Cash is excluded (not available historically), so this tracks equity minus cash balance.
         - Standard periods (1D/5D/1M/3M/6M/1Y): hourly candles for 1D/5D, daily otherwise.
         - CUSTOM period: daily candles between `start` and `end` (YYYY-MM-DD strings).
+        - symbol_filter: if provided, only include positions whose symbol is in the list.
         """
         local = self._local_portfolio()
         if local and "positions" in local and YFINANCE_AVAILABLE:
-            return self._live_pnl_history(local["positions"], period, start, end)
+            positions = local["positions"]
+            if symbol_filter is not None:
+                allowed = set(symbol_filter)
+                positions = [p for p in positions if p["symbol"] in allowed]
+            return self._live_pnl_history(positions, period, start, end)
         return self._demo_pnl_history(period, start, end)
 
     def _live_pnl_history(
