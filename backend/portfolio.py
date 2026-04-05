@@ -50,8 +50,8 @@ class PortfolioReader:
                 self._portfolio_cache = data
                 self._portfolio_cache_time = now
                 return data
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to read portfolio file: {e}")
         self._portfolio_cache = None
         return None
 
@@ -82,6 +82,14 @@ class PortfolioReader:
             self._price_cache = prices
             self._price_cache_time = now
         return self._price_cache
+
+    def reset_cache(self) -> None:
+        """Invalidate all caches so the next read fetches fresh data."""
+        self._portfolio_cache = None
+        self._portfolio_cache_time = 0
+        self._price_cache = {}
+        self._price_cache_time = 0
+        self.mode = "local" if self._portfolio_path.exists() else "demo"
 
     # ------------------------------------------------------------------ #
     # Account                                                              #
@@ -121,7 +129,7 @@ class PortfolioReader:
     def _position_dict(self, symbol: str, qty: float, entry: float, price: float,
                        price_source: str = "live", account: str = "") -> dict:
         pl   = (price - entry) * qty
-        plpc = (price - entry) / entry * 100
+        plpc = ((price - entry) / entry * 100) if entry else 0.0
         return {
             "symbol":          symbol,
             "qty":             qty,

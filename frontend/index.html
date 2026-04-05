@@ -25,8 +25,29 @@
       <button class="btn-toggle" id="refreshBtn" onclick="refreshNews()">
         REFRESH NEWS
       </button>
+      <button class="btn-toggle" onclick="openSettings()">
+        ⚙ SETTINGS
+      </button>
     </div>
   </header>
+
+  <!-- ═══════════════════ SETTINGS MODAL ═══════════════════ -->
+  <div class="modal-overlay hidden" id="settingsModal" onclick="if(event.target===this)closeSettings()">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">PORTFOLIO SETTINGS</span>
+        <button class="modal-close" onclick="closeSettings()">✕</button>
+      </div>
+      <div class="modal-body">
+        <textarea id="settingsText" class="settings-textarea" spellcheck="false"></textarea>
+      </div>
+      <div class="modal-footer">
+        <span class="modal-status" id="settingsStatus"></span>
+        <button class="btn-cancel" onclick="closeSettings()">CANCEL</button>
+        <button class="btn-save" id="saveSettingsBtn" onclick="saveSettings()">SAVE &amp; REBUILD</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ═══════════════════ MAIN GRID ═══════════════════ -->
   <main class="grid">

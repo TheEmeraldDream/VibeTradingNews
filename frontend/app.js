@@ -527,7 +527,8 @@ async function readSSEStream(response, onChunk) {
 
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
-      const evt = JSON.parse(line.slice(6));
+      let evt;
+      try { evt = JSON.parse(line.slice(6)); } catch (_) { continue; }
       if (evt.type === 'chunk') {
         accumulated += evt.text;
         onChunk(accumulated);
@@ -596,6 +597,53 @@ function appendMsg(type, text) {
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
   return div;
+}
+
+// ─── Settings modal ──────────────────────────────────────────
+async function openSettings() {
+  const status = document.getElementById('settingsStatus');
+  status.textContent = 'Loading…';
+  document.getElementById('settingsModal').classList.remove('hidden');
+  try {
+    const res = await fetch(`${API}/api/settings`);
+    if (!res.ok) throw new Error(`${res.status}`);
+    const data = await res.json();
+    document.getElementById('settingsText').value = data.content || '';
+    status.textContent = '';
+  } catch (e) {
+    status.textContent = `Failed to load: ${e.message}`;
+  }
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.add('hidden');
+}
+
+async function saveSettings() {
+  const btn    = document.getElementById('saveSettingsBtn');
+  const status = document.getElementById('settingsStatus');
+  btn.disabled = true;
+  status.textContent = 'Saving & fetching live prices…';
+  try {
+    const content = document.getElementById('settingsText').value;
+    const res = await fetch(`${API}/api/settings`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Server error ${res.status}`);
+    }
+    const data = await res.json();
+    status.textContent = data.portfolio_built
+      ? `Saved — ${data.positions} position(s), equity ${fmt$(data.equity)}`
+      : (data.message || 'Saved.');
+    setTimeout(closeSettings, 2000);
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+    btn.disabled = false;
+  }
 }
 
 // ─── Status badge ────────────────────────────────────────────

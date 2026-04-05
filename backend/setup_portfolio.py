@@ -201,6 +201,38 @@ def build_portfolio(holdings: list[dict]) -> dict:
     }
 
 
+# ── Public API (called from main.py settings endpoints) ──────────────────────
+
+def get_raw_config() -> str:
+    """Return current setup.txt content, or the blank template if it doesn't exist."""
+    return SETUP_TXT.read_text(encoding="utf-8-sig") if SETUP_TXT.exists() else SETUP_TEMPLATE
+
+
+def save_and_rebuild(content: str) -> dict:
+    """
+    Write content to setup.txt and rebuild local/portfolio.json.
+    Returns a summary dict. AI key changes require a server restart to take effect.
+    """
+    SETUP_TXT.write_text(content, encoding="utf-8")
+    ai_keys, holdings = parse_setup(SETUP_TXT)
+
+    if ai_keys:
+        update_env(ai_keys)
+
+    if not holdings:
+        return {"portfolio_built": False, "message": "No holdings found — app will run in demo mode."}
+
+    portfolio = build_portfolio(holdings)
+    LOCAL_DIR.mkdir(exist_ok=True)
+    JSON_PATH.write_text(json.dumps(portfolio, indent=2), encoding="utf-8")
+    return {
+        "portfolio_built": True,
+        "equity":    portfolio["account"]["equity"],
+        "positions": len(portfolio["positions"]),
+        "accounts":  len(portfolio.get("accounts", [])),
+    }
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:

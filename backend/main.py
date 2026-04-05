@@ -203,6 +203,10 @@ class PromptRequest(BaseModel):
         return v
 
 
+class SettingsRequest(BaseModel):
+    content: str = Field(..., max_length=50_000)
+
+
 # ------------------------------------------------------------------ #
 # REST endpoints                                                       #
 # ------------------------------------------------------------------ #
@@ -210,6 +214,44 @@ class PromptRequest(BaseModel):
 @app.get("/")
 async def root():
     return {"status": "ok", "portfolio_mode": portfolio.mode, "ui": "/app"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "mode": portfolio.mode}
+
+
+@app.get("/api/settings")
+async def get_settings():
+    try:
+        from setup_portfolio import get_raw_config
+        return {"content": get_raw_config()}
+    except Exception as e:
+        logger.error(f"Failed to read settings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read settings")
+
+
+@app.post("/api/settings")
+@limiter.limit("10/minute")
+async def save_settings(request: Request, body: SettingsRequest):
+    """Save holdings configuration and rebuild portfolio. AI key changes need a server restart."""
+    from setup_portfolio import save_and_rebuild
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(None, lambda: save_and_rebuild(body.content))
+    except Exception as e:
+        logger.error(f"Settings save failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    portfolio.reset_cache()
+
+    try:
+        await _do_refresh()
+        await ws_manager.broadcast(_build_snapshot())
+    except Exception as e:
+        logger.warning(f"Post-settings refresh failed: {e}")
+
+    return result
 
 
 @app.get("/api/account")
