@@ -71,7 +71,21 @@
       <div class="chart-section">
         <div class="chart-title-bar">
           <span class="panel-title">P&amp;L HISTORY</span>
-          <span class="chart-range dim">30D</span>
+          <div class="chart-ranges" id="chartRanges">
+            <button class="range-btn" data-period="1D"  onclick="setChartPeriod('1D')">1D</button>
+            <button class="range-btn" data-period="5D"  onclick="setChartPeriod('5D')">5D</button>
+            <button class="range-btn active" data-period="1M" onclick="setChartPeriod('1M')">1M</button>
+            <button class="range-btn" data-period="3M"  onclick="setChartPeriod('3M')">3M</button>
+            <button class="range-btn" data-period="6M"  onclick="setChartPeriod('6M')">6M</button>
+            <button class="range-btn" data-period="1Y"  onclick="setChartPeriod('1Y')">1Y</button>
+            <button class="range-btn" data-period="CUSTOM" onclick="setChartPeriod('CUSTOM')">CUSTOM</button>
+          </div>
+        </div>
+        <div class="chart-date-picker" id="chartDatePicker">
+          <input type="date" id="chartStart" class="date-input" />
+          <span class="dim">—</span>
+          <input type="date" id="chartEnd" class="date-input" />
+          <button class="range-apply-btn" onclick="applyCustomRange()">APPLY</button>
         </div>
         <div class="chart-container" id="pnlChart"></div>
       </div>

@@ -256,10 +256,16 @@ async def refresh_news(request: Request):
 
 
 @app.get("/api/pnl-history")
-async def get_pnl_history():
+async def get_pnl_history(period: str = "1M", start: str = None, end: str = None):
+    if period not in ("1D", "5D", "1M", "3M", "6M", "1Y", "CUSTOM"):
+        raise HTTPException(status_code=400, detail=f"Invalid period '{period}'")
+    if period == "CUSTOM" and not (start and end):
+        raise HTTPException(status_code=400, detail="CUSTOM period requires start and end dates")
     try:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, portfolio.get_pnl_history)
+        return await loop.run_in_executor(
+            None, lambda: portfolio.get_pnl_history(period, start, end)
+        )
     except Exception as e:
         logger.error(f"Failed to build P&L history: {e}")
         raise HTTPException(status_code=500, detail="Failed to build P&L history")

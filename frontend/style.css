@@ -305,12 +305,71 @@ main.grid {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px 6px;
+  gap: 8px;
 }
 
-.chart-range {
-  font-size: 9px;
-  letter-spacing: 1px;
+.chart-ranges {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
 }
+
+.range-btn {
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text3);
+  font-family: var(--font);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.range-btn:hover  { border-color: var(--blue); color: var(--blue); }
+.range-btn.active { border-color: var(--blue); color: var(--blue); background: rgba(77,159,255,0.1); }
+
+.chart-date-picker {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px 6px;
+}
+
+.chart-date-picker.visible { display: flex; }
+
+.date-input {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 10px;
+  padding: 3px 6px;
+  outline: none;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.date-input:focus { border-color: var(--blue); }
+
+.range-apply-btn {
+  background: rgba(77,159,255,0.1);
+  border: 1px solid rgba(77,159,255,0.3);
+  border-radius: var(--radius);
+  color: var(--blue);
+  font-family: var(--font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.range-apply-btn:hover { background: rgba(77,159,255,0.2); }
 
 .chart-container {
   height: 160px;

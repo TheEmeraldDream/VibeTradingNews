@@ -23,6 +23,7 @@ let activeFilter = 'ALL';
 let allArticles  = [];
 let pnlChart     = null;
 let pnlSeries    = null;
+let activePeriod = '1M';
 
 // ─── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -128,9 +129,39 @@ function initPnlChart() {
   loadPnlHistory();
 }
 
-async function loadPnlHistory() {
+function setChartPeriod(period) {
+  activePeriod = period;
+  document.querySelectorAll('.range-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.period === period);
+  });
+  const picker = document.getElementById('chartDatePicker');
+  if (period === 'CUSTOM') {
+    picker.classList.add('visible');
+    // Default end to today, start to 30 days ago
+    const today = new Date();
+    const prior = new Date(today);
+    prior.setDate(prior.getDate() - 30);
+    document.getElementById('chartEnd').value   = today.toISOString().slice(0, 10);
+    document.getElementById('chartStart').value = prior.toISOString().slice(0, 10);
+  } else {
+    picker.classList.remove('visible');
+    loadPnlHistory();
+  }
+}
+
+function applyCustomRange() {
+  const start = document.getElementById('chartStart').value;
+  const end   = document.getElementById('chartEnd').value;
+  if (start && end && start <= end) loadPnlHistory(start, end);
+}
+
+async function loadPnlHistory(customStart, customEnd) {
+  let url = `${API}/api/pnl-history?period=${activePeriod}`;
+  if (activePeriod === 'CUSTOM' && customStart && customEnd) {
+    url += `&start=${customStart}&end=${customEnd}`;
+  }
   try {
-    const res  = await fetch(`${API}/api/pnl-history`);
+    const res  = await fetch(url);
     const data = await res.json();
     if (Array.isArray(data) && data.length) {
       pnlSeries.setData(data);

@@ -153,78 +153,149 @@ class PortfolioReader:
     # P&L history (candlestick chart)                                      #
     # ------------------------------------------------------------------ #
 
-    def get_pnl_history(self, days: int = 30) -> list[dict]:
+    # Maps UI period codes to yfinance period string and candle interval.
+    # "1h" intervals return Unix-timestamp keys; "1d" returns date-string keys.
+    _PERIOD_CFG: dict[str, dict] = {
+        "1D": {"yf_period": "1d",  "interval": "1h"},
+        "5D": {"yf_period": "5d",  "interval": "1h"},
+        "1M": {"yf_period": "1mo", "interval": "1d"},
+        "3M": {"yf_period": "3mo", "interval": "1d"},
+        "6M": {"yf_period": "6mo", "interval": "1d"},
+        "1Y": {"yf_period": "1y",  "interval": "1d"},
+    }
+
+    def get_pnl_history(
+        self,
+        period: str = "1M",
+        start: str | None = None,
+        end: str | None = None,
+    ) -> list[dict]:
         """
-        Returns daily portfolio P&L OHLC for the past `days` trading days.
-        Each entry: {time, open, high, low, close} where values are unrealized $ P&L.
-        Requires yfinance for live data; falls back to deterministic mock data in demo mode.
+        Returns portfolio P&L OHLC candles.
+        Each entry: {time, open, high, low, close} — values are unrealized $ P&L.
+        - Standard periods (1D/5D/1M/3M/6M/1Y): hourly candles for 1D/5D, daily otherwise.
+        - CUSTOM period: daily candles between `start` and `end` (YYYY-MM-DD strings).
         """
         local = self._local_portfolio()
         if local and "positions" in local and YFINANCE_AVAILABLE:
-            return self._live_pnl_history(local["positions"], days)
-        return self._demo_pnl_history(days)
+            return self._live_pnl_history(local["positions"], period, start, end)
+        return self._demo_pnl_history(period, start, end)
 
-    def _live_pnl_history(self, positions: list[dict], days: int) -> list[dict]:
+    def _live_pnl_history(
+        self,
+        positions: list[dict],
+        period: str,
+        start: str | None,
+        end: str | None,
+    ) -> list[dict]:
         import yfinance as yf
 
-        end   = datetime.now()
-        start = end - timedelta(days=days + 14)  # buffer for weekends/holidays
-        candles: dict[str, dict[str, float]] = {}
+        cfg      = self._PERIOD_CFG.get(period, self._PERIOD_CFG["1M"])
+        interval = "1d" if period == "CUSTOM" else cfg["interval"]
+        intraday = interval != "1d"
+        candles: dict = {}
 
         for p in positions:
             sym   = p["symbol"]
             qty   = float(p["qty"])
             entry = float(p["avg_entry_price"])
             try:
-                hist = yf.Ticker(sym).history(start=start, end=end, interval="1d")
+                if period == "CUSTOM" and start and end:
+                    hist = yf.Ticker(sym).history(start=start, end=end, interval=interval)
+                else:
+                    hist = yf.Ticker(sym).history(period=cfg["yf_period"], interval=interval)
+
                 for ts, row in hist.iterrows():
-                    date = ts.strftime("%Y-%m-%d")
-                    if date not in candles:
-                        candles[date] = {"open": 0.0, "high": 0.0, "low": 0.0, "close": 0.0}
-                    candles[date]["open"]  += (row["Open"]  - entry) * qty
-                    candles[date]["high"]  += (row["High"]  - entry) * qty
-                    candles[date]["low"]   += (row["Low"]   - entry) * qty
-                    candles[date]["close"] += (row["Close"] - entry) * qty
+                    # Intraday: use Unix timestamps so lightweight-charts handles time zones;
+                    # daily: date strings are cleaner and avoid DST edge cases.
+                    key = int(ts.timestamp()) if intraday else ts.strftime("%Y-%m-%d")
+                    if key not in candles:
+                        candles[key] = {"open": 0.0, "high": 0.0, "low": 0.0, "close": 0.0}
+                    candles[key]["open"]  += (row["Open"]  - entry) * qty
+                    candles[key]["high"]  += (row["High"]  - entry) * qty
+                    candles[key]["low"]   += (row["Low"]   - entry) * qty
+                    candles[key]["close"] += (row["Close"] - entry) * qty
             except Exception as e:
                 logger.warning(f"P&L history fetch failed for {sym}: {e}")
 
-        result = sorted(
-            [{"time": d, "open": round(v["open"], 2), "high": round(v["high"], 2),
+        return sorted(
+            [{"time": k, "open": round(v["open"], 2), "high": round(v["high"], 2),
               "low": round(v["low"], 2), "close": round(v["close"], 2)}
-             for d, v in candles.items()],
+             for k, v in candles.items()],
             key=lambda x: x["time"],
         )
-        return result[-days:]
 
-    def _demo_pnl_history(self, days: int) -> list[dict]:
+    def _demo_pnl_history(
+        self,
+        period: str,
+        start: str | None,
+        end: str | None,
+    ) -> list[dict]:
         """Deterministic mock P&L history for demo mode."""
-        rng = random.Random(42)
-        today = datetime.now().date()
+        cfg      = self._PERIOD_CFG.get(period, self._PERIOD_CFG["1M"])
+        intraday = period in ("1D", "5D")
+        rng      = random.Random(42)
+        result   = []
+        pnl      = 0.0
 
-        # Collect the last `days` Mon–Fri dates in chronological order
+        if period == "CUSTOM" and start and end:
+            start_d = datetime.strptime(start, "%Y-%m-%d").date()
+            end_d   = datetime.strptime(end,   "%Y-%m-%d").date()
+            d = start_d
+            while d <= end_d:
+                if d.weekday() < 5:
+                    result.append(self._demo_candle(rng, d.strftime("%Y-%m-%d"), pnl))
+                    pnl = result[-1]["close"]
+                d += timedelta(days=1)
+            return result
+
+        if intraday:
+            # Generate hourly candles across the last N trading days
+            trading_days_needed = 1 if period == "1D" else 5
+            today = datetime.now().date()
+            days_collected = 0
+            d = today
+            while days_collected < trading_days_needed:
+                if d.weekday() < 5:
+                    # Market hours: 9:30–16:00 → ~7 hourly bars
+                    for hour in (10, 11, 12, 13, 14, 15, 16):
+                        ts = int(datetime(d.year, d.month, d.day, hour).timestamp())
+                        c  = self._demo_candle(rng, ts, pnl)
+                        result.append(c)
+                        pnl = c["close"]
+                    days_collected += 1
+                d -= timedelta(days=1)
+            return sorted(result, key=lambda x: x["time"])
+
+        # Daily candles — walk back the required number of trading days
+        days_map = {"1M": 30, "3M": 90, "6M": 180, "1Y": 365}
+        num_days = days_map.get(period, 30)
+        today    = datetime.now().date()
         trading_days: list = []
         d = today
-        while len(trading_days) < days:
+        while len(trading_days) < num_days:
             if d.weekday() < 5:
                 trading_days.append(d)
             d -= timedelta(days=1)
         trading_days.reverse()
 
-        result = []
-        pnl = 0.0
         for d in trading_days:
-            change = rng.gauss(15, 180)
-            open_  = pnl
-            close  = pnl + change
-            high   = max(open_, close) + abs(rng.gauss(0, 70))
-            low    = min(open_, close) - abs(rng.gauss(0, 70))
-            result.append({
-                "time":  d.strftime("%Y-%m-%d"),
-                "open":  round(open_, 2),
-                "high":  round(high, 2),
-                "low":   round(low, 2),
-                "close": round(close, 2),
-            })
-            pnl = close
-
+            c = self._demo_candle(rng, d.strftime("%Y-%m-%d"), pnl)
+            result.append(c)
+            pnl = c["close"]
         return result
+
+    @staticmethod
+    def _demo_candle(rng: random.Random, time_key, pnl: float) -> dict:
+        change = rng.gauss(15, 180)
+        open_  = pnl
+        close  = pnl + change
+        high   = max(open_, close) + abs(rng.gauss(0, 70))
+        low    = min(open_, close) - abs(rng.gauss(0, 70))
+        return {
+            "time":  time_key,
+            "open":  round(open_, 2),
+            "high":  round(high, 2),
+            "low":   round(low, 2),
+            "close": round(close, 2),
+        }
