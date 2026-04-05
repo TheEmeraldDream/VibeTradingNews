@@ -45,20 +45,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: ── Create .env from example if missing ────────────────────────
-cd /d "%~dp0"
-if not exist ".env" (
-    if exist ".env.example" (
-        copy ".env.example" ".env" >nul
-        echo.
-        echo  NOTE: .env created from .env.example
-        echo  Add your API key to trading-app\.env then re-run.
-        echo.
-    ) else (
-        echo WARNING: No .env or .env.example found. App will run in demo mode.
-    )
-)
-cd /d "%~dp0backend"
+:: ── Run setup (creates setup.txt on first run, builds portfolio on subsequent runs) ──
+echo.
+echo  Running setup...
+python setup_portfolio.py
+echo.
 
 :: ── Open browser after 2s ──────────────────────────────────────
 start "" /b cmd /c "timeout /t 2 >nul && start http://localhost:8000/app"

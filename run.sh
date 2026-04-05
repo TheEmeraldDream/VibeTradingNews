@@ -15,6 +15,12 @@ source venv/bin/activate
 echo "Installing dependencies..."
 pip install -r requirements.txt -q
 
+# Run setup (creates setup.txt on first run, builds portfolio on subsequent runs)
+echo ""
+echo "Running setup..."
+python setup_portfolio.py
+echo ""
+
 # Open browser after server starts
 (sleep 2 && python3 -m webbrowser "http://localhost:8000/app") &
 

@@ -37,19 +37,7 @@ git clone https://github.com/TheEmeraldDream/VibeTradingNews.git
 cd VibeTradingNews
 ```
 
-### 2. Add your AI key
-
-Open the `.env` file in any text editor and paste your key — you only need to fill in one:
-
-```
-ANTHROPIC_API_KEY=your-key-here
-OPENAI_API_KEY=your-key-here
-GOOGLE_API_KEY=your-key-here
-```
-
-> **Note:** Edit `.env`, not `.env.example`. The example file is a template and is not read by the app.
-
-### 3. Launch
+### 2. Launch once to create your setup file
 
 **Windows** — double-click `run.bat`, or run it from the terminal:
 ```
@@ -61,7 +49,30 @@ run.bat
 chmod +x run.sh && ./run.sh
 ```
 
-The app will open automatically in your browser at `http://localhost:8000/app`.
+On first launch the app creates a `setup.txt` file in the same folder and opens in demo mode. Open `setup.txt` in any text editor — it contains everything you need to fill in.
+
+### 3. Fill in setup.txt
+
+`setup.txt` has two sections:
+
+**AI key** — paste one key (you only need one):
+```
+ANTHROPIC_API_KEY = sk-ant-...
+```
+
+**Holdings** — one line per position, in the format `Account, Symbol, Shares, Avg Cost`:
+```
+Brokerage, VTI,   25, 220.00
+Brokerage, AAPL,  10, 155.00
+Brokerage, CASH, 5000,   0.00
+My 401(k), VTSNX, 100, 140.00
+```
+
+Use `CASH` as the symbol to include uninvested cash — set Shares to the dollar amount and Avg Cost to 0.
+
+### 4. Launch again
+
+Run `run.bat` (or `run.sh`) again. The app will fetch live prices from Yahoo Finance, build your portfolio, and open with your real data.
 
 ---
 
@@ -92,7 +103,9 @@ Click **ANALYZE NEWS IMPACT** for an automatic read on how recent news may be af
 
 ## Adding your real holdings
 
-By default the app shows sample data. To use your actual portfolio, create a file at `local/portfolio.json` — this file stays on your computer and is never uploaded to GitHub.
+The easiest way is to fill in `setup.txt` as described in the Getting Started section above — just run `run.bat` once, edit `setup.txt`, and run it again.
+
+For advanced users who want full control, you can also create `local/portfolio.json` directly. This file is never uploaded to GitHub.
 
 ### Single account (simple setup)
 

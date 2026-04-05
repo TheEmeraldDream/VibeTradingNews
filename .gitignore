@@ -56,3 +56,4 @@ data/
 
 # ── Local overrides (personal config, never committed) ────────────
 local/
+setup.txt
