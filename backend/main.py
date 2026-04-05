@@ -125,6 +125,7 @@ def _build_snapshot() -> dict[str, Any]:
         "news": news_cache.get("articles", []),
         "news_updated": news_cache.get("last_updated"),
         "ai_available": ai_client.available,
+        "ai_provider":  ai_client.provider,
     }
 
 

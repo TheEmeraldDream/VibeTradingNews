@@ -29,6 +29,9 @@ let pnlChart          = null;
 let pnlSeries         = null;
 let activePeriod      = '1M';
 let lastNewsUpdateIso = null;
+let aiLabel           = 'AI';   // updated from snapshot: CLAUDE | GEMINI | CHATGPT
+
+const AI_DISPLAY_NAMES = { anthropic: 'CLAUDE', openai: 'CHATGPT', google: 'GEMINI' };
 
 // ─── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -215,6 +218,10 @@ function applySnapshot(data) {
   if (data.account) {
     renderAccount(data.account);
     setBrokerStatus(data.ai_available ? 'connected' : 'demo');
+  }
+  if (data.ai_provider) {
+    aiLabel = AI_DISPLAY_NAMES[data.ai_provider] || 'AI';
+    document.getElementById('aiPanelTitle').textContent = aiLabel + ' NEWS ANALYST';
   }
   if (data.accounts !== undefined) initAccounts(data.accounts);
   if (data.positions !== undefined) renderHoldings(data.positions);
@@ -591,7 +598,7 @@ function appendMsg(type, text) {
   const msgs    = document.getElementById('chatMessages');
   const div     = document.createElement('div');
   div.className = `chat-msg ${type}`;
-  const labels  = { user: 'YOU', claude: 'CLAUDE', system: 'SYSTEM' };
+  const labels  = { user: 'YOU', claude: aiLabel, system: 'SYSTEM' };
   div.innerHTML = `
     <span class="msg-sender">${labels[type] || type.toUpperCase()}</span>
     <span class="msg-text">${escHtml(text)}</span>`;
