@@ -40,6 +40,56 @@ document.addEventListener('DOMContentLoaded', () => {
   connectWS();
   checkClaudeStatus();
   setInterval(() => { if (lastNewsUpdateIso) renderNewsTimestamp(lastNewsUpdateIso); }, 1000);
+
+  // ── Static button listeners ──────────────────────────────
+  document.getElementById('refreshBtn').addEventListener('click', refreshNews);
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+  document.getElementById('modalCloseBtn').addEventListener('click', closeSettings);
+  document.getElementById('cancelSettingsBtn').addEventListener('click', closeSettings);
+  document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+  document.getElementById('analyzeBtn').addEventListener('click', triggerAnalysis);
+  document.getElementById('sendBtn').addEventListener('click', sendPrompt);
+  document.getElementById('applyRangeBtn').addEventListener('click', applyCustomRange);
+
+  document.getElementById('settingsModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSettings();
+  });
+
+  document.getElementById('promptInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      sendPrompt();
+    }
+  });
+
+  // ── Event delegation: chart range buttons ────────────────
+  document.getElementById('chartRanges').addEventListener('click', e => {
+    const btn = e.target.closest('.range-btn');
+    if (btn) setChartPeriod(btn.dataset.period);
+  });
+
+  // ── Event delegation: filter chips (static + dynamic) ────
+  document.getElementById('filterChips').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (chip) setFilter(chip.dataset.sym);
+  });
+
+  // ── Event delegation: holdings list (dynamic) ────────────
+  document.getElementById('holdingsList').addEventListener('click', e => {
+    const toggle = e.target.closest('.account-toggle');
+    if (toggle) {
+      e.stopPropagation();
+      toggleAccount(toggle.dataset.accountId);
+      return;
+    }
+    const header = e.target.closest('.account-header');
+    if (header) {
+      toggleCollapse(header.dataset.accountId);
+      return;
+    }
+    const item = e.target.closest('.holding-item');
+    if (item) setFilter(item.dataset.sym);
+  });
 });
 
 // ─── Panel resize ────────────────────────────────────────────
@@ -322,13 +372,13 @@ function renderHoldings(positions) {
     const collapsed = collapsedAccounts.has(accountId);
     html += `
       <div class="account-group">
-        <div class="account-header" onclick="toggleCollapse('${escHtml(accountId)}')">
+        <div class="account-header" data-account-id="${escHtml(accountId)}">
           <div class="account-header-left">
             <span class="account-chevron${collapsed ? '' : ' open'}">▶</span>
             <span class="account-name">${escHtml(name.toUpperCase())}</span>
           </div>
           <span class="account-toggle ${on ? 'on' : 'off'}"
-                onclick="event.stopPropagation(); toggleAccount('${escHtml(accountId)}')"
+                data-account-id="${escHtml(accountId)}"
                 title="${on ? 'Included in news & chart — click to exclude' : 'Excluded from news & chart — click to include'}">
             ${on ? 'ON' : 'OFF'}
           </span>
@@ -354,7 +404,7 @@ function renderHoldingItem(p) {
     ? `<span class="holding-price stale" title="Live price unavailable — showing last known price">~$${p.current_price.toFixed(2)}</span>`
     : `<span class="holding-price">$${p.current_price.toFixed(2)}</span>`;
   return `
-    <div class="holding-item${isActive}" onclick="setFilter('${escHtml(p.symbol)}')">
+    <div class="holding-item${isActive}" data-sym="${escHtml(p.symbol)}">
       <div class="holding-top">
         <span class="holding-sym">${escHtml(p.symbol)}</span>
         ${priceLabel}
@@ -377,7 +427,7 @@ function renderFilterChips(positions) {
 
   const chips = ['ALL', ...syms].map(sym => {
     const active = sym === activeFilter ? ' active' : '';
-    return `<button class="chip${active}" data-sym="${escHtml(sym)}" onclick="setFilter('${escHtml(sym)}')">${escHtml(sym)}</button>`;
+    return `<button class="chip${active}" data-sym="${escHtml(sym)}">${escHtml(sym)}</button>`;
   });
   container.innerHTML = chips.join('');
 }
@@ -485,14 +535,7 @@ async function checkClaudeStatus() {
     badge.className = 'claude-badge ' + (d.ai_available ? 'online' : '');
 
     if (!d.ai_available) {
-      const keys = d.ai_keys_in_env || [];
-      if (keys.length > 0) {
-        const names = { anthropic: 'Claude', openai: 'ChatGPT', google: 'Gemini' };
-        const label = keys.map(k => names[k] || k).join(' / ');
-        appendMsg('system', `${label} key found in .env but the provider failed to start — try restarting the server.`);
-      } else {
-        appendMsg('system', 'No AI key found in .env — open the .env file and add one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.');
-      }
+      appendMsg('system', 'No AI key configured — open Settings and add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY.');
     }
   } catch (_) {}
 }
@@ -506,13 +549,6 @@ function triggerAnalysis() {
     input.value = `Analyze the recent news for ${activeFilter}. What are the key headlines and how might they be driving price movement for this stock?`;
   }
   sendPrompt();
-}
-
-function handleKey(e) {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    sendPrompt();
-  }
 }
 
 // Read a Server-Sent Events stream and call onChunk(text) for each chunk.
